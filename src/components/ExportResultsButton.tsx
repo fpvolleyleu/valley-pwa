@@ -1,4 +1,3 @@
-import React from "react";
 import { downloadResultsJson } from "../utils/exportResultsJson";
 
 type Props = {

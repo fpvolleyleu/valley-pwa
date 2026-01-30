@@ -38,7 +38,7 @@ async function dumpObjectStore(db: IDBDatabase, storeName: string) {
 
     // Fallback: cursor
     const out: any[] = [];
-    const req = store.openCursor();
+    const req = (store as any).openCursor();
     req.onsuccess = () => {
       const cur = req.result;
       if (!cur) return resolve(out);
