@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import ExportResultsButton from "./components/ExportResultsButton";
+import { ImportButton } from "./components/ImportButton";
+
 import type {
   AttackEvent,
   BlockEvent,
@@ -190,13 +192,16 @@ function labelEvent(e: RallyEvent) {
 
 function Card(props: { title: string; right?: any; children: any }) {
   return (
-    <div className="card">
-      <div className="cardHead">
-        <div className="cardTitle">{props.title}</div>
-        <div className="cardRight">{props.right}</div>
+    <>
+      <ImportButton />
+      <div className="card">
+        <div className="cardHead">
+          <div className="cardTitle">{props.title}</div>
+          <div className="cardRight">{props.right}</div>
+        </div>
+        <div className="cardBody">{props.children}</div>
       </div>
-      <div className="cardBody">{props.children}</div>
-    </div>
+    </>
   )
 }
 
@@ -1472,7 +1477,10 @@ export default function App() {
       {header()}
       <div className="container">{content}</div>
       <div className="footer">
-        <span className="muted">データは端末内に保存（ローカル）</span>
+        <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
+  <ExportResultsButton className="btn" label="集計JSONをダウンロード（results.json）" />
+  <span className="muted">データは端末内に保存（ローカル）</span>
+</div>
       </div>
     </div>
   )
