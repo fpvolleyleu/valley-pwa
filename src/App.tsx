@@ -8,7 +8,6 @@ type Phase = 'early' | 'mid' | 'late'
 
 /**
  * ✅ TS1294 対策：enum を使わない（erasableSyntaxOnly 対応）
- * 文字リテラル union + const map で置き換え
  */
 const TOSS_LABEL = {
   left: 'レフト',
@@ -31,6 +30,19 @@ const TOSS_LABEL = {
   other: 'その他',
 } as const
 type TossType = keyof typeof TOSS_LABEL
+
+/**
+ * ✅ スパイク位置（打った位置）
+ */
+const SPIKE_POS_LABEL = {
+  left: 'レフト',
+  right: 'ライト',
+  middle: 'センター',
+  back: 'バック',
+  pipe: 'パイプ',
+  other: 'その他',
+} as const
+type SpikePos = keyof typeof SPIKE_POS_LABEL
 
 type Player = {
   id: string
@@ -57,6 +69,7 @@ type BaseEvent = {
 type AttackEvent = BaseEvent & {
   kind: 'attack'
   attackType: 'spike'
+  spikePos?: SpikePos // ✅追加
   result: 'kill' | 'effective' | 'continue' | 'error'
 }
 
@@ -617,6 +630,8 @@ export default function App() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [m.id, m.roster.our.join(','), m.roster.opp.join(',')])
 
+    const [spikePosSel, setSpikePosSel] = useState<SpikePos>('left')
+
     function onDragStart(ev: React.DragEvent, playerId: string) {
       ev.dataTransfer.setData('text/plain', playerId)
       ev.dataTransfer.effectAllowed = 'move'
@@ -655,13 +670,19 @@ export default function App() {
     const canUseEvents = !!activeRally && !!actorId && !!actorTeam && !viewOnly
 
     /**
-     * ✅ TS2353 対策：ここは型を緩める（UI入力を最優先）
-     * discriminated union の Omit をやめて any で受ける
+     * ✅ TS2353 対策：UI入力優先（ここは any で受ける）
+     * ✅ スパイクは spikePos を自動付与（未指定なら選択中の位置）
      */
     function addInline(e: any) {
       if (!activeRally) return
       if (!actorId) return
-      const ev: RallyEvent = { ...(e as any), id: uid(), actorId, at: Date.now() }
+
+      let payload = e as any
+      if (payload?.kind === 'attack' && payload?.attackType === 'spike') {
+        payload = { ...payload, spikePos: payload.spikePos ?? spikePosSel }
+      }
+
+      const ev: RallyEvent = { ...(payload as any), id: uid(), actorId, at: Date.now() }
       addEventInlineAndAutoAdvance(m, activeRally.id, ev, (nextId) => {
         setActiveRallyId(nextId)
       })
@@ -697,7 +718,7 @@ export default function App() {
               <span>日付</span>
               <input className="input" value={m.date} onChange={(e) => updateMatchDate(m.id, e.target.value)} disabled={viewOnly} />
             </label>
-            <Pill tone="ok">スコア {lastScore.our}-{lastScore.opp}</Pill>
+            <Pill tone="ok">スコア {tl.length ? tl[tl.length - 1].scoreAfter.our : 0}-{tl.length ? tl[tl.length - 1].scoreAfter.opp : 0}</Pill>
             <Pill>ラリー {finishedSorted.length}</Pill>
           </div>
         </Card>
@@ -742,7 +763,6 @@ export default function App() {
           </div>
         </Card>
 
-        {/* ラリー追加ボタンは置かない（自動で「未確定ラリー」を維持する設計） */}
         <Card title={`ラリー入力（#${activeNo}）`}>
           <div className="row wrap">
             <Pill tone="ok">現在スコア {lastScore.our}-{lastScore.opp}</Pill>
@@ -776,21 +796,34 @@ export default function App() {
                 ))}
               </div>
 
-              {(!actorId || !actorTeam) ? (
-                <div className="hint">※イベント入力するには、参加メンバーを割り当てて「誰が」を選んでください。</div>
-              ) : null}
-
               <div className="hr" />
 
               <div className="playGrid2">
                 <div className="playCard">
                   <div className="playHead">スパイク</div>
+
+                  <div className="row wrap" style={{ marginBottom: 8 }}>
+                    {(['left','middle','right','back','pipe','other'] as SpikePos[]).map((pos) => (
+                      <button
+                        key={pos}
+                        className={`btn small ${spikePosSel === pos ? 'primary' : ''}`}
+                        disabled={!canUseEvents}
+                        onClick={() => setSpikePosSel(pos)}
+                        type="button"
+                      >
+                        {SPIKE_POS_LABEL[pos]}
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="actions4 compact">
                     <button className="action action-ok" disabled={!canUseEvents} onClick={() => addInline({ kind: 'attack', attackType: 'spike', result: 'kill' })} type="button">決定</button>
                     <button className="action action-ok" disabled={!canUseEvents} onClick={() => addInline({ kind: 'attack', attackType: 'spike', result: 'effective' })} type="button">効果的</button>
                     <button className="action" disabled={!canUseEvents} onClick={() => addInline({ kind: 'attack', attackType: 'spike', result: 'continue' })} type="button">継続</button>
                     <button className="action action-danger" disabled={!canUseEvents} onClick={() => addInline({ kind: 'attack', attackType: 'spike', result: 'error' })} type="button">ミス</button>
                   </div>
+
+                  <div className="hint">※位置は押した瞬間に記録（現在：{SPIKE_POS_LABEL[spikePosSel]}）</div>
                 </div>
 
                 <div className="playCard">
@@ -821,7 +854,6 @@ export default function App() {
                     <button className="action" disabled={!canUseEvents} onClick={() => addInline({ kind: 'receive', result: 'ok', quality: 'C' })} type="button">C</button>
                     <button className="action action-danger" disabled={!canUseEvents} onClick={() => addInline({ kind: 'receive', result: 'error' })} type="button">ミス</button>
                   </div>
-                  <div className="hint">※ミスを押すと自動で失点＆次のラリーに移行</div>
                 </div>
 
                 <div className="playCard">
@@ -832,42 +864,28 @@ export default function App() {
                     <button className="action" disabled={!canUseEvents} onClick={() => addInline({ kind: 'dig', result: 'ok', quality: 'C' })} type="button">C</button>
                     <button className="action action-danger" disabled={!canUseEvents} onClick={() => addInline({ kind: 'dig', result: 'error' })} type="button">ミス</button>
                   </div>
-                  <div className="hint">※ミスを押すと自動で失点＆次のラリーに移行</div>
                 </div>
 
                 <div className="playCard wide">
                   <div className="playHead">トス</div>
-
                   <div className="btnGrid compact" style={{ marginBottom: 8 }}>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'left' })} type="button">{TOSS_LABEL.left}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'right' })} type="button">{TOSS_LABEL.right}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'back' })} type="button">{TOSS_LABEL.back}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'pipe' })} type="button">{TOSS_LABEL.pipe}</button>
-
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'aQuick' })} type="button">{TOSS_LABEL.aQuick}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'bQuick' })} type="button">{TOSS_LABEL.bQuick}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'cQuick' })} type="button">{TOSS_LABEL.cQuick}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'dQuick' })} type="button">{TOSS_LABEL.dQuick}</button>
-
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'aSemi' })} type="button">{TOSS_LABEL.aSemi}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'bSemi' })} type="button">{TOSS_LABEL.bSemi}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'cSemi' })} type="button">{TOSS_LABEL.cSemi}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'dSemi' })} type="button">{TOSS_LABEL.dSemi}</button>
-
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'time' })} type="button">{TOSS_LABEL.time}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'backAttack' })} type="button">{TOSS_LABEL.backAttack}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'wide' })} type="button">{TOSS_LABEL.wide}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'short' })} type="button">{TOSS_LABEL.short}</button>
-
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'combo' })} type="button">{TOSS_LABEL.combo}</button>
-                    <button className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: 'other' })} type="button">{TOSS_LABEL.other}</button>
-
+                    {(
+                      [
+                        'left','right','back','pipe',
+                        'aQuick','bQuick','cQuick','dQuick',
+                        'aSemi','bSemi','cSemi','dSemi',
+                        'time','backAttack','wide','short',
+                        'combo','other',
+                      ] as TossType[]
+                    ).map((t) => (
+                      <button key={t} className="btn small" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'ok', toss: t })} type="button">
+                        {TOSS_LABEL[t]}
+                      </button>
+                    ))}
                     <button className="btn small danger" disabled={!canUseEvents} onClick={() => addInline({ kind: 'set', result: 'error' })} type="button">
                       トスミス
                     </button>
                   </div>
-
-                  <div className="hint">※トスミスは自動で失点＆次のラリーに移行</div>
                 </div>
               </div>
 
@@ -887,7 +905,7 @@ export default function App() {
                     const head = `${who}${team === 'opp' ? '（相手）' : ''}`
 
                     let body = ''
-                    if (e.kind === 'attack') body = `スパイク：${e.result}`
+                    if (e.kind === 'attack') body = `スパイク：${e.result}${e.spikePos ? `（${SPIKE_POS_LABEL[e.spikePos]}）` : ''}`
                     if (e.kind === 'serve') body = `サーブ：${e.result}`
                     if (e.kind === 'block') body = `ブロック：${e.result}`
                     if (e.kind === 'receive') body = `サーブカット：${e.result}${e.quality ? `(${e.quality})` : ''}`
@@ -979,8 +997,8 @@ export default function App() {
           )}
 
           <div className="hr" />
-
           <div className="subHead">イベント</div>
+
           {r.events.length === 0 ? (
             <div className="muted">イベントなし</div>
           ) : (
@@ -992,7 +1010,7 @@ export default function App() {
                 const head = `${who}${team === 'opp' ? '（相手）' : ''}`
 
                 let body = ''
-                if (e.kind === 'attack') body = `スパイク：${e.result}`
+                if (e.kind === 'attack') body = `スパイク：${e.result}${e.spikePos ? `（${SPIKE_POS_LABEL[e.spikePos]}）` : ''}`
                 if (e.kind === 'serve') body = `サーブ：${e.result}`
                 if (e.kind === 'block') body = `ブロック：${e.result}`
                 if (e.kind === 'receive') body = `サーブカット：${e.result}${e.quality ? `(${e.quality})` : ''}`
@@ -1049,7 +1067,7 @@ export default function App() {
                 <div key={p.id} className="rallyRow">
                   <button className="rallyMain" onClick={() => setView({ name: 'player', playerId: p.id })} type="button">
                     <div className="listTitle">{p.name}</div>
-                    <div className="muted small">個人成績・推移・トス/サーブカット</div>
+                    <div className="muted small">個人成績・推移・トス/サーブカット・スパイク位置×決定率</div>
                   </button>
                   {!viewOnly ? (
                     <button className="btn small danger" onClick={() => deletePlayer(p.id)} type="button">
@@ -1083,8 +1101,12 @@ export default function App() {
       return out
     }, [db.matches, ralliesByMatch, player.id])
 
+    const spikeAttacks = useMemo(() => {
+      return allEvents.map((x) => x.event).filter((e): e is AttackEvent => e.kind === 'attack' && e.attackType === 'spike')
+    }, [allEvents])
+
     const spike = useMemo(() => {
-      const attacks = allEvents.map((x) => x.event).filter((e): e is AttackEvent => e.kind === 'attack' && e.attackType === 'spike')
+      const attacks = spikeAttacks
       const att = attacks.length
       const kill = attacks.filter((a) => a.result === 'kill').length
       const eff = attacks.filter((a) => a.result === 'effective').length
@@ -1092,8 +1114,37 @@ export default function App() {
       const err = attacks.filter((a) => a.result === 'error').length
       const scoreSum = attacks.reduce((s, a) => s + scoreAttack(a), 0)
       const effectRate = att ? scoreSum / att : 0
+
       return { att, kill, eff, cont, err, effectRate }
-    }, [allEvents])
+    }, [spikeAttacks])
+
+    // ✅ 追加：スパイク位置 × 決定率（＋効果率もついでに）
+    const spikePosTable = useMemo(() => {
+      type Key = SpikePos | 'unknown'
+      const keys: Key[] = ['left','middle','right','back','pipe','other','unknown']
+
+      const map: Record<string, { att: number; kill: number; scoreSum: number }> = {}
+      for (const k of keys) map[k] = { att: 0, kill: 0, scoreSum: 0 }
+
+      for (const a of spikeAttacks) {
+        const k: Key = (a.spikePos ?? 'unknown') as Key
+        map[k].att += 1
+        if (a.result === 'kill') map[k].kill += 1
+        map[k].scoreSum += scoreAttack(a)
+      }
+
+      const rows = keys.map((k) => {
+        const v = map[k]
+        const killRate = v.att ? v.kill / v.att : 0
+        const effectRate = v.att ? v.scoreSum / v.att : 0
+        const label = k === 'unknown' ? '不明' : SPIKE_POS_LABEL[k]
+        return { key: k, label, att: v.att, kill: v.kill, killRate, effectRate }
+      })
+
+      // 試行が多い順（同数なら決定率高い順）
+      rows.sort((a, b) => (b.att - a.att) || (b.killRate - a.killRate))
+      return rows
+    }, [spikeAttacks])
 
     const serve = useMemo(() => {
       const serves = allEvents.map((x) => x.event).filter((e): e is ServeEvent => e.kind === 'serve')
@@ -1278,6 +1329,11 @@ export default function App() {
             <Pill tone="ok">スパイク：試行 {spike.att} / 決定 {spike.kill} / 効果的 {spike.eff} / 継続 {spike.cont} / ミス {spike.err}</Pill>
             <Pill>効果率 {spike.effectRate.toFixed(3)}</Pill>
           </div>
+
+          <div className="hint">
+            ※決定率は「決定 / 試行」。効果率は「{`(得点=1, 効果的=0.7, 継続=0.3, ミス=0)`} の平均」。
+          </div>
+
           <div className="row wrap">
             <Pill tone="ok">サーブ：試行 {serve.att} / ACE {serve.ace} / 効果的 {serve.eff} / 継続 {serve.cont} / ミス {serve.err}</Pill>
             <Pill>効果率 {serve.effectRate.toFixed(3)}</Pill>
@@ -1294,7 +1350,34 @@ export default function App() {
             <Pill tone="ok">トス：試行 {setStat.att} / 直後攻撃あり {setStat.scored}</Pill>
             <Pill>効果率（直後攻撃） {setStat.effectRate.toFixed(3)}</Pill>
           </div>
-          <div className="hint">効果率：得点=1.0、効果的=0.7、継続=0.3、ミス=0.0（サーブカット/ディグ：A=1.0、B=0.67、C=0.33、ミス=0.0）。</div>
+        </Card>
+
+        <Card title="スパイク位置 × 決定率">
+          <div className="tableWrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th className="th">位置</th>
+                  <th className="th">試行</th>
+                  <th className="th">決定</th>
+                  <th className="th">決定率</th>
+                  <th className="th">効果率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {spikePosTable.map((r) => (
+                  <tr key={r.key}>
+                    <td className="td">{r.label}</td>
+                    <td className="td">{r.att}</td>
+                    <td className="td">{r.kill}</td>
+                    <td className="td">{pct(r.kill, r.att)}</td>
+                    <td className="td">{r.att ? r.effectRate.toFixed(3) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="hint">※位置未入力の過去データは「不明」に集計。</div>
         </Card>
 
         <Card title="推移（試合日付 / 効果率）">
