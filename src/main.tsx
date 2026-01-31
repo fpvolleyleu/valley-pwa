@@ -1,13 +1,12 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
-import './index.css'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.tsx";
+import ExportJsonFab from "./components/ExportJsonFab";
+import "./index.css";
 
-import { registerSW } from "virtual:pwa-register";// devOptions.enabled = true のときは開発中もSWを試せる
-registerSW({ immediate: true })
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
-)
+    <ExportJsonFab />
+  </React.StrictMode>
+);
